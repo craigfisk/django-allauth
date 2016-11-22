@@ -13,14 +13,12 @@ class OrcidAccount(ProviderAccount):
                                  ['orcid-profile', 'orcid-identifier', 'uri'])
 
     def to_str(self):
-        dflt = super(OrcidAccount, self).to_str()
         return self.account.uid
 
 
 class OrcidProvider(OAuth2Provider):
     id = 'orcid'
     name = 'Orcid.org'
-    package = 'allauth.socialaccount.providers.orcid'
     account_class = OrcidAccount
 
     def get_default_scope(self):
@@ -45,6 +43,7 @@ class OrcidProvider(OAuth2Provider):
         return dict((key, value) for (key, value) in common_fields.items()
                     if value)
 
+
 providers.registry.register(OrcidProvider)
 
 
@@ -58,5 +57,5 @@ def extract_from_dict(data, path):
         for key in path:
             value = value[key]
         return value
-    except (KeyError, IndexError):
+    except (KeyError, IndexError, TypeError):
         return ''

@@ -3,12 +3,12 @@ from __future__ import absolute_import
 from datetime import timedelta
 
 from django.core.exceptions import PermissionDenied
-from django.core.urlresolvers import reverse
 from django.http import HttpResponseRedirect
 from django.utils import timezone
 
+from allauth.compat import reverse
+from allauth.exceptions import ImmediateHttpResponse
 from allauth.utils import build_absolute_uri
-from allauth.account import app_settings
 from allauth.socialaccount.helpers import render_authentication_error
 from allauth.socialaccount import providers
 from allauth.socialaccount.providers.oauth2.client import (OAuth2Client,
@@ -22,12 +22,18 @@ from ..base import AuthAction, AuthError
 class OAuth2Adapter(object):
     expires_in_key = 'expires_in'
     supports_state = True
-    redirect_uri_protocol = None  # None: use ACCOUNT_DEFAULT_HTTP_PROTOCOL
+    redirect_uri_protocol = None
     access_token_method = 'POST'
     login_cancelled_error = 'access_denied'
+    scope_delimiter = ' '
+    basic_auth = False
+    headers = None
+
+    def __init__(self, request):
+        self.request = request
 
     def get_provider(self):
-        return providers.registry.by_id(self.provider_id)
+        return providers.registry.by_id(self.provider_id, self.request)
 
     def complete_login(self, request, app, access_token, **kwargs):
         """
@@ -51,24 +57,28 @@ class OAuth2View(object):
         def view(request, *args, **kwargs):
             self = cls()
             self.request = request
-            self.adapter = adapter()
-            return self.dispatch(request, *args, **kwargs)
+            self.adapter = adapter(request)
+            try:
+                return self.dispatch(request, *args, **kwargs)
+            except ImmediateHttpResponse as e:
+                return e.response
         return view
 
     def get_client(self, request, app):
         callback_url = reverse(self.adapter.provider_id + "_callback")
-        protocol = (self.adapter.redirect_uri_protocol
-                    or app_settings.DEFAULT_HTTP_PROTOCOL)
         callback_url = build_absolute_uri(
             request, callback_url,
-            protocol=protocol)
+            protocol=self.adapter.redirect_uri_protocol)
         provider = self.adapter.get_provider()
         scope = provider.get_scope(request)
         client = OAuth2Client(self.request, app.client_id, app.secret,
                               self.adapter.access_token_method,
                               self.adapter.access_token_url,
                               callback_url,
-                              scope)
+                              scope,
+                              scope_delimiter=self.adapter.scope_delimiter,
+                              headers=self.adapter.headers,
+                              basic_auth=self.adapter.basic_auth)
         return client
 
 
